@@ -1,0 +1,141 @@
+{
+  "annotations": { "list": [] },
+  "description": "Application Logs — DynamoDB via PostgreSQL Proxy. Filtre por Correlation ID para rastrear um trace.",
+  "editable": true,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["applogs", "traces", "dynamodb", "conexao-solidaria"],
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "browser",
+  "title": "Application Logs — Traces",
+  "uid": "cs-app-logs",
+  "version": 1,
+
+  "templating": {
+    "list": [
+      {
+        "name": "level",
+        "label": "Log Level",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+        "definition": "SELECT DISTINCT level FROM app_logs ORDER BY 1",
+        "query": "SELECT DISTINCT level FROM app_logs ORDER BY 1",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" },
+        "hide": 0
+      },
+      {
+        "name": "caller",
+        "label": "Caller",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+        "definition": "SELECT DISTINCT caller FROM app_logs ORDER BY 1",
+        "query": "SELECT DISTINCT caller FROM app_logs ORDER BY 1",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" },
+        "hide": 0
+      },
+      {
+        "name": "correlationId",
+        "label": "Correlation ID (Trace)",
+        "type": "textbox",
+        "current": { "text": "", "value": "" },
+        "hide": 0,
+        "query": "",
+        "description": "Cole um CorrelationId para ver todos os logs de um trace. Deixe vazio para ver tudo."
+      }
+    ]
+  },
+
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Total de Logs",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT COUNT(*) AS total FROM app_logs", "format": "table" }],
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "purple", "mode": "fixed" } }, "overrides": [] }
+    },
+    {
+      "id": 2, "type": "stat", "title": "Information",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT COUNT(*) AS total FROM app_logs WHERE level = 'Information'", "format": "table" }],
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "blue", "mode": "fixed" } }, "overrides": [] }
+    },
+    {
+      "id": 3, "type": "stat", "title": "Warning",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT COUNT(*) AS total FROM app_logs WHERE level = 'Warning'", "format": "table" }],
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "orange", "mode": "fixed" } }, "overrides": [] }
+    },
+    {
+      "id": 4, "type": "stat", "title": "Error",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT COUNT(*) AS total FROM app_logs WHERE level = 'Error'", "format": "table" }],
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "red", "mode": "fixed" } }, "overrides": [] }
+    },
+    {
+      "id": 5, "type": "table", "title": "Logs — Trace Completo",
+      "description": "Informe um Correlation ID no filtro acima para ver o trace completo em ordem cronológica.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 14 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT timestamp, level, caller, message, correlation_id, data FROM app_logs WHERE level LIKE '%$level%' AND caller LIKE '%$caller%' AND correlation_id LIKE '%$correlationId%' ORDER BY timestamp ASC",
+        "format": "table"
+      }],
+      "options": { "cellHeight": "sm", "footer": { "show": false }, "showHeader": true, "sortBy": [{ "displayName": "timestamp", "desc": false }] },
+      "fieldConfig": {
+        "defaults": { "custom": { "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "level" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "Information": { "color": "blue",   "index": 0 } } },
+                { "type": "value", "options": { "Warning":     { "color": "orange", "index": 1 } } },
+                { "type": "value", "options": { "Error":       { "color": "red",    "index": 2 } } }
+              ]}
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "timestamp"      }, "properties": [{ "id": "custom.width", "value": 230 }] },
+          { "matcher": { "id": "byName", "options": "correlation_id" }, "properties": [{ "id": "custom.width", "value": 280 }] }
+        ]
+      }
+    },
+    {
+      "id": 6, "type": "barchart", "title": "Logs por Caller",
+      "gridPos": { "x": 0, "y": 18, "w": 14, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT caller, COUNT(*) AS total FROM app_logs WHERE level LIKE '%$level%' AND correlation_id LIKE '%$correlationId%' GROUP BY caller ORDER BY total DESC", "format": "table" }],
+      "options": { "barRadius": 0.1, "barWidth": 0.7, "fillOpacity": 80, "orientation": "horizontal", "legend": { "showLegend": false } },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 80 } }, "overrides": [] }
+    },
+    {
+      "id": 7, "type": "barchart", "title": "Logs por Level",
+      "gridPos": { "x": 14, "y": 18, "w": 10, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT level, COUNT(*) AS total FROM app_logs WHERE caller LIKE '%$caller%' AND correlation_id LIKE '%$correlationId%' GROUP BY level ORDER BY total DESC", "format": "table" }],
+      "options": { "barRadius": 0.1, "barWidth": 0.7, "fillOpacity": 80, "orientation": "horizontal", "legend": { "showLegend": false } },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 80 } }, "overrides": [] }
+    }
+  ]
+}

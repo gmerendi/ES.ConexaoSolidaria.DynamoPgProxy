@@ -1,0 +1,131 @@
+{
+  "annotations": { "list": [] },
+  "description": "Audit Log — DynamoDB via PostgreSQL Proxy",
+  "editable": true,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["auditlog", "dynamodb", "conexao-solidaria"],
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "browser",
+  "title": "Audit Log — DynamoDB",
+  "uid": "cs-audit-log",
+  "version": 1,
+
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Serviço",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+        "definition": "SELECT DISTINCT service FROM audit_log ORDER BY 1",
+        "query": "SELECT DISTINCT service FROM audit_log ORDER BY 1",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" },
+        "hide": 0
+      },
+      {
+        "name": "operation",
+        "label": "Operação",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+        "definition": "SELECT DISTINCT operation FROM audit_log ORDER BY 1",
+        "query": "SELECT DISTINCT operation FROM audit_log ORDER BY 1",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" },
+        "hide": 0
+      }
+    ]
+  },
+
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Total de Registros",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT COUNT(*) AS total FROM audit_log", "format": "table" }],
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "green", "mode": "fixed" } }, "overrides": [] }
+    },
+    {
+      "id": 2, "type": "stat", "title": "ADDED",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT COUNT(*) AS total FROM audit_log WHERE operation = 'ADDED'", "format": "table" }],
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "blue", "mode": "fixed" } }, "overrides": [] }
+    },
+    {
+      "id": 3, "type": "stat", "title": "MODIFIED",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT COUNT(*) AS total FROM audit_log WHERE operation = 'MODIFIED'", "format": "table" }],
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "orange", "mode": "fixed" } }, "overrides": [] }
+    },
+    {
+      "id": 4, "type": "stat", "title": "DELETED",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT COUNT(*) AS total FROM audit_log WHERE operation = 'DELETED'", "format": "table" }],
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "red", "mode": "fixed" } }, "overrides": [] }
+    },
+    {
+      "id": 5, "type": "table", "title": "Audit Log",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 14 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT timestamp, service, operation, changed_by, resource_id, ip_address FROM audit_log WHERE service LIKE '%$service%' AND operation LIKE '%$operation%' ORDER BY timestamp DESC",
+        "format": "table"
+      }],
+      "options": { "cellHeight": "sm", "footer": { "show": false }, "showHeader": true },
+      "fieldConfig": {
+        "defaults": { "custom": { "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "operation" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "ADDED":    { "color": "green",  "index": 0 } } },
+                { "type": "value", "options": { "MODIFIED": { "color": "orange", "index": 1 } } },
+                { "type": "value", "options": { "DELETED":  { "color": "red",    "index": 2 } } }
+              ]}
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "timestamp"   }, "properties": [{ "id": "custom.width", "value": 230 }] },
+          { "matcher": { "id": "byName", "options": "resource_id" }, "properties": [{ "id": "custom.width", "value": 280 }] }
+        ]
+      }
+    },
+    {
+      "id": 6, "type": "barchart", "title": "Eventos por Serviço",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT service, COUNT(*) AS total FROM audit_log GROUP BY service ORDER BY total DESC", "format": "table" }],
+      "options": { "barRadius": 0.1, "barWidth": 0.7, "fillOpacity": 80, "orientation": "horizontal", "legend": { "showLegend": false } },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 80 } }, "overrides": [] }
+    },
+    {
+      "id": 7, "type": "barchart", "title": "Eventos por Operação",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "dynamo-pg" },
+      "targets": [{ "refId": "A", "rawSql": "SELECT operation, COUNT(*) AS total FROM audit_log GROUP BY operation ORDER BY total DESC", "format": "table" }],
+      "options": { "barRadius": 0.1, "barWidth": 0.7, "fillOpacity": 80, "orientation": "horizontal", "legend": { "showLegend": false } },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 80 } }, "overrides": [] }
+    }
+  ]
+}

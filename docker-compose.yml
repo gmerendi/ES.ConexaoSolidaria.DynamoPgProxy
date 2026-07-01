@@ -1,0 +1,18 @@
+services:
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cs-dynamo-pg-proxy
+    ports:
+      - "5450:5450"
+    environment:
+      PG_HOST:                "0.0.0.0"
+      PG_PORT:                "5450"
+      DYNAMO_ENDPOINT:        "${DYNAMO_ENDPOINT:-http://host.docker.internal:8000}"
+      DYNAMO_REGION:          "${DYNAMO_REGION:-us-east-1}"
+      DYNAMO_TABLE_AUDIT:     "${DYNAMO_TABLE_AUDIT:-cs-audit-log}"
+      DYNAMO_TABLE_APPLOGS:   "${DYNAMO_TABLE_APPLOGS:-cs-app-logs}"
+      AWS_ACCESS_KEY_ID:      "${AWS_ACCESS_KEY_ID:-AKIAIOSFODNN7EXAMPLE}"
+      AWS_SECRET_ACCESS_KEY:  "${AWS_SECRET_ACCESS_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}"
+    restart: unless-stopped
