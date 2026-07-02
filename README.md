@@ -104,9 +104,6 @@ WHERE level = 'Error'
 SELECT * FROM app_logs
 WHERE message LIKE '%login%'
 
--- Agrupamento
-SELECT service, COUNT(*) AS total FROM audit_log GROUP BY service
-
 -- Tabelas disponíveis
 SELECT table_name FROM information_schema.tables
 ```
@@ -217,4 +214,4 @@ Projeto desenvolvido para o Hackathon **POSTECH** — grupo 1.
 
 ## Github Actions
 
-*(a confirmar)* — não foi encontrado um workflow de CI/CD (`.github/workflows`) neste repositório até o momento. Caso o pipeline exista em outro lugar (ex.: repositório central), atualize esta seção com o link; caso contrário, é necessário criar um pipeline que valide o código Python (lint/testes) e gere a imagem Docker a cada push na branch principal, conforme exigido pelo edital.
+Esse repositorio não possui Github Action por ser utilizado somente em desenvolvimento local para servir de datasource entre Grafana e DynamoDb.
