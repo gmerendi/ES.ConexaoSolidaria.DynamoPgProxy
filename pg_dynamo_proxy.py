@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 # ── Configuração via env ────────────────────────────────────────────────────
 PG_HOST         = os.getenv("PG_HOST",         "0.0.0.0")
 PG_PORT         = int(os.getenv("PG_PORT",     "5450"))
-DYNAMO_ENDPOINT = os.getenv("DYNAMO_ENDPOINT", "http://cs-dynamo-db:8000")
+DYNAMO_ENDPOINT = os.getenv("DYNAMO_ENDPOINT", "") or None  # None = DynamoDB real AWS
 DYNAMO_REGION   = os.getenv("DYNAMO_REGION",   "us-east-1")
 AWS_ACCESS_KEY  = os.getenv("AWS_ACCESS_KEY_ID",     "AKIAIOSFODNN7EXAMPLE")
 AWS_SECRET_KEY  = os.getenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
@@ -94,10 +94,11 @@ COL_MAP: dict[str, dict] = {
 # ── Cliente DynamoDB ────────────────────────────────────────────────────────
 dynamo = boto3.client(
     "dynamodb",
-    endpoint_url=DYNAMO_ENDPOINT,
+    endpoint_url=DYNAMO_ENDPOINT if DYNAMO_ENDPOINT else None,
     region_name=DYNAMO_REGION,
     aws_access_key_id=AWS_ACCESS_KEY,
     aws_secret_access_key=AWS_SECRET_KEY,
+    aws_session_token=os.getenv("AWS_SESSION_TOKEN") or None,
 )
 
 
@@ -292,6 +293,20 @@ def parse_sql(sql: str) -> dict:
     if "pg_catalog" in sql.lower() or "pg_type" in sql.lower():
         return {"type": "command"}
 
+    # SELECT DISTINCT coluna FROM tabela — para variáveis do Grafana
+    m = re.match(
+        r"SELECT\s+DISTINCT\s+\"?(\w+)\"?\s+FROM\s+\"?(\w+)\"?"
+        r"(?:\s+WHERE\s+(.+?))?(?:\s+ORDER\s+BY\s+.+?)?\s*$",
+        sql, re.IGNORECASE | re.DOTALL
+    )
+    if m:
+        return {
+            "type":    "distinct",
+            "col":     m.group(1).lower(),
+            "table":   m.group(2).lower(),
+            "where":   parse_where(m.group(3) or ""),
+        }
+
     # COUNT(*) — retorna o total de registros
     m = re.match(
         r"SELECT\s+COUNT\s*\(\s*\*\s*\)\s+AS\s+\w+\s+FROM\s+\"?(\w+)\"?"
@@ -401,6 +416,41 @@ async def handle_query(sql: str, writer: asyncio.StreamWriter) -> None:
         for row in parsed["rows"]:
             writer.write(pg_data_row(row))
         writer.write(pg_command_complete(f"SELECT {len(parsed['rows'])}"))
+        writer.write(pg_ready_for_query())
+
+    elif t == "distinct":
+        table_name = parsed["table"]
+        col_name   = parsed["col"]
+        if table_name not in TABLES:
+            writer.write(pg_error(f'relation "{table_name}" does not exist', "42P01"))
+            writer.write(pg_ready_for_query())
+            await writer.drain()
+            return
+        col_map = COL_MAP[table_name]
+        if col_name not in col_map:
+            writer.write(pg_row_description([(col_name, OID_TEXT)]))
+            writer.write(pg_command_complete("SELECT 0"))
+            writer.write(pg_ready_for_query())
+            await writer.drain()
+            return
+        try:
+            items = scan_dynamo(table_name, parsed["where"])
+        except Exception as e:
+            log.error(f"DynamoDB error: {e}", exc_info=True)
+            writer.write(pg_error(str(e)))
+            writer.write(pg_ready_for_query())
+            await writer.drain()
+            return
+        dynamo_field = col_map[col_name][0]
+        valores = sorted({
+            (item.get(dynamo_field, {}).get("S") or item.get(dynamo_field, {}).get("N"))
+            for item in items
+            if item.get(dynamo_field)
+        })
+        writer.write(pg_row_description([(col_name, OID_TEXT)]))
+        for v in valores:
+            writer.write(pg_data_row([v]))
+        writer.write(pg_command_complete(f"SELECT {len(valores)}"))
         writer.write(pg_ready_for_query())
 
     elif t == "count":
