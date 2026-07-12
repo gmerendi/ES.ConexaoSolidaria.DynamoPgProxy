@@ -1,0 +1,79 @@
+﻿name: CD - Build, Push & Deploy
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: cs-dynamo-pg-proxy
+  EKS_CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
+  K8S_NAMESPACE: default
+  DEPLOYMENT_NAME: cs-dynamo-pg-proxy
+  MANIFEST_FILE: k8s/aws/services/cs-dynamo-proxy.yaml
+
+jobs:
+  ci-gate:
+    uses: ./.github/workflows/ci.yml
+
+  build-push-deploy:
+    needs: ci-gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout DynamoPgProxy (código da aplicação)
+        uses: actions/checkout@v4
+        with:
+          path: dynamoproxy
+
+      - name: Checkout Infra (manifests K8s)
+        uses: actions/checkout@v4
+        with:
+          repository: gmerendi/ES.ConexaoSolidaria.Infra
+          token: ${{ secrets.INFRA_REPO_TOKEN }}
+          ref: develop
+          path: infra
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login no Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build e push da imagem Docker
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}-${{ github.run_number }}
+        run: |
+          cd dynamoproxy
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Configurar kubeconfig do EKS
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+
+      - name: Aplicar manifest Kubernetes
+        run: |
+          kubectl apply -f infra/${{ env.MANIFEST_FILE }} -n ${{ env.K8S_NAMESPACE }}
+
+      - name: Atualizar imagem do Deployment
+        env:
+          IMAGE: ${{ steps.build-image.outputs.image }}
+        run: |
+          kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+            ${{ env.DEPLOYMENT_NAME }}=$IMAGE \
+            -n ${{ env.K8S_NAMESPACE }}
+
+      - name: Aguardar rollout
+        run: |
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} --timeout=120s
