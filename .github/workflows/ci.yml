@@ -28,7 +28,7 @@ jobs:
 
       - name: Lint (flake8 - erros críticos apenas)
         run: |
-          flake8 pg_dynamo_proxy.py --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 src/pg_dynamo_proxy.py --count --select=E9,F63,F7,F82 --show-source --statistics
 
       - name: Verificar sintaxe (compilação)
-        run: python -m py_compile pg_dynamo_proxy.py
+        run: python -m src/py_compile pg_dynamo_proxy.py
