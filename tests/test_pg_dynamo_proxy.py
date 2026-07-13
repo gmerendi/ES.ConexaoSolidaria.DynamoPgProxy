@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 # Importa o módulo a testar (sem executar o main)
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
 import pg_dynamo_proxy as proxy
 
