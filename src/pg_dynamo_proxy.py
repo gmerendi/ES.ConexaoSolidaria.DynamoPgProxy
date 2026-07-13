@@ -111,6 +111,9 @@ def scan_dynamo(table_name: str, conditions: list[dict]) -> list[dict]:
     Executa um Scan no DynamoDB com FilterExpression derivado do WHERE SQL.
     Pagina automaticamente para retornar todos os registros.
     """
+    if table_name not in TABLES:
+        return []
+
     info    = TABLES[table_name]
     col_map = COL_MAP[table_name]
 
@@ -196,21 +199,22 @@ def parse_where(where_str: str) -> list[dict]:
 
     conds: list[dict] = []
 
+    # BETWEEN deve ser processado ANTES do split por AND
+    # pois "BETWEEN 'a' AND 'b'" contém AND interno que seria dividido incorretamente
+    for m in re.finditer(
+        r'"?(\w+)"?\s+BETWEEN\s+\'([^\']+)\'\s+AND\s+\'([^\']+)\'',
+        s, re.IGNORECASE
+    ):
+        col = m.group(1).lower()
+        conds.append({"col": col, "op": ">=", "val": m.group(2)})
+        conds.append({"col": col, "op": "<=", "val": m.group(3)})
+        # substitui o trecho BETWEEN pelo placeholder para não ser reprocessado
+        s = s[:m.start()] + "1=1 AND 1=1" + s[m.end():]
+
     # Divide por AND (não aninhado)
     for part in re.split(r"\bAND\b", s, flags=re.IGNORECASE):
         part = part.strip().strip("()")
         if not part or part == "1=1":
-            continue
-
-        # BETWEEN col BETWEEN 'a' AND 'b'
-        m = re.match(
-            r'"?(\w+)"?\s+BETWEEN\s+\'?([^\']+?)\'?\s+AND\s+\'?([^\']+?)\'?$',
-            part, re.IGNORECASE
-        )
-        if m:
-            col = m.group(1).lower()
-            conds.append({"col": col, "op": ">=", "val": m.group(2).strip().strip("'")})
-            conds.append({"col": col, "op": "<=", "val": m.group(3).strip().strip("'")})
             continue
 
         # LIKE
