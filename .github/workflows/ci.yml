@@ -1,4 +1,4 @@
-name: CI - Lint & Build Check
+name: CI - Build & Test
 
 on:
   push:
@@ -7,9 +7,21 @@ on:
     branches: [develop, main]
   workflow_call:
 
+env:
+  PYTHON_VERSION: '3.12'
+  IMAGE_NAME: 'pg-dynamo-proxy:test'
+  DOCKERFILE_PATH: 'src/Dockerfile' # Ajuste o caminho do Dockerfile se necessário
+
+# ── PERMISSOES NECESSARIAS PARA SEGURANCA ──────────────────────────
+permissions:
+  contents: read           # Permite que o checkout leia o seu código
+  security-events: write   # Obrigatório para fazer o upload do relatório SARIF do Trivy
+# ───────────────────────────────────────────────────────────────────
+
 jobs:
-  lint-and-build-check:
+  build-and-test:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
@@ -17,14 +29,15 @@ jobs:
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip' # Ativa automaticamente o cache de pacotes baseado em arquivos de requirements
 
       - name: Instalar dependências
         run: |
           python -m pip install --upgrade pip
           pip install -r src/requirements.txt
           pip install -r tests/requirements-test.txt
-          pip install flake8
+          pip install flake8 pytest pytest-cov
 
       - name: Lint (flake8 - erros críticos apenas)
         run: |
@@ -33,5 +46,44 @@ jobs:
       - name: Verificar sintaxe (compilação)
         run: python -m py_compile src/pg_dynamo_proxy.py
 
+      # 1. TESTES UNITARIOS & COBERTURA --------------------------------------------------------------
       - name: Executar testes unitários
-        run: pytest tests/test_pg_dynamo_proxy.py -v
+        run: |
+          pytest tests/test_pg_dynamo_proxy.py -v --junitxml=test-results.xml --cov=src --cov-report=xml:coverage.xml
+
+      # 2. SALVA OS ARTEFATOS IMEDIATAMENTE ---------------------------------------------------------
+      - name: Publicar resultados de teste
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.xml
+
+      - name: Publicar cobertura de código
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+      # 3. IMAGEM DOCKER ---------------------------------------------------------------------------
+      - name: Build da imagem Docker local
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }} -f ${{ env.DOCKERFILE_PATH }} .
+
+      # 4. TESTE VULNERABILIDADES ------------------------------------------------------------------
+      - name: Escaneamento de vulnerabilidades (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0'
+
+      - name: Publicar relatório de segurança
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report
+          path: 'trivy-results.sarif'
