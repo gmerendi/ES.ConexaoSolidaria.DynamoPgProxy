@@ -1,4 +1,4 @@
-﻿name: CD - Build, Push & Deploy
+name: CD - Build, Push & Deploy
 
 on:
   push:
@@ -11,7 +11,12 @@ env:
   EKS_CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
   K8S_NAMESPACE: default
   DEPLOYMENT_NAME: cs-dynamo-pg-proxy
-  MANIFEST_FILE: k8s/aws/services/cs-dynamo-proxy.yaml
+  MANIFEST_FILE: k8s/aws/services/cs-dynamo-pg-proxy.yaml # Ajuste se o nome do arquivo no repositório de infra for diferente
+  DOCKERFILE_PATH: src/Dockerfile # Ajuste o caminho relativo ao repositório do código se for diferente
+
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
   ci-gate:
@@ -22,10 +27,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout DynamoPgProxy (código da aplicação)
+      - name: Checkout Proxy (código da aplicação)
         uses: actions/checkout@v4
         with:
-          path: dynamoproxy
+          path: proxy
 
       - name: Checkout Infra (manifests K8s)
         uses: actions/checkout@v4
@@ -53,14 +58,36 @@ jobs:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}-${{ github.run_number }}
         run: |
-          cd dynamoproxy
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          cd proxy
+          # 1. Faz o build apenas com a tag ÚNICA (Segurança de Imutabilidade)
+          docker build -f $DOCKERFILE_PATH -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          
+          # 2. Envia apenas a tag única para o ECR
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Configurar kubeconfig do EKS
         run: |
           aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+
+      - name: Aplicar aws credentials
+        run: |
+          kubectl create secret generic cs-aws-credentials \
+            --from-literal=AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            --from-literal=AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            --from-literal=AWS_SESSION_TOKEN="${{ secrets.AWS_SESSION_TOKEN }}" \
+            -n ${{ env.K8S_NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # INJETA A TAG NO MANIFESTO ANTES DO APPLY ───────────
+      - name: Injetar Tag da Imagem no Manifesto
+        env:
+          TAG_GERADA: ${{ steps.build-image.outputs.image_tag }}
+        run: |
+          # Substitui a palavra-chave ${IMAGE_TAG} no arquivo pelo valor real gerado neste build
+          sed -i "s/\${IMAGE_TAG}/$TAG_GERADA/g" infra/${{ env.MANIFEST_FILE }}
 
       - name: Aplicar manifest Kubernetes
         run: |
@@ -70,6 +97,7 @@ jobs:
         env:
           IMAGE: ${{ steps.build-image.outputs.image }}
         run: |
+          # Atualiza o container "cs-dynamo-pg-proxy" dentro do deployment "cs-dynamo-pg-proxy"
           kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
             ${{ env.DEPLOYMENT_NAME }}=$IMAGE \
             -n ${{ env.K8S_NAMESPACE }}
