@@ -196,7 +196,17 @@ Os dashboards prontos deste repositório usam o datasource `DynamoDB-PG` e devem
 
 ## Testes
 
-Este repositório não possui um projeto de testes automatizados por ser utilizado localmente para permitir a conexao do Grafana com DynamoDb.
+### 1. Instalar as dependências (app + testes)
+```bash
+pip install -r src/requirements.txt
+pip install -r tests/requirements-test.txt
+pip install pytest-cov   # só se quiser o relatório de cobertura
+```
+
+### 2. Rodar os testes
+```bash
+pytest tests/test_pg_dynamo_proxy.py -v --cov=src --cov-report=term
+```
 
 ## Estrutura do Projeto
 
